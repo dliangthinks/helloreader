@@ -1,0 +1,270 @@
+import toga
+from toga.style import Pack
+from toga.style.pack import COLUMN, ROW
+import html # For escaping content
+import logging
+import json # For config persistence
+import os # For config path
+
+# Import the scraper and its exception class
+from web_scraper import WebScraper, ScraperException
+
+# Define the HTML template structure - Base
+HTML_TEMPLATE = """
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ 
+            font-family: 'Songti SC', 'PingFang SC', sans-serif;
+            background-color: {background_color};
+            color: {text_color};
+            font-size: 2.0em; /* Slightly smaller default */
+            line-height: 1.6;
+            margin: 20px; /* Add some margin */
+        }}
+        #content {{ 
+            white-space: pre-wrap; 
+        }}
+        /* Add more styles for links, etc. if needed */
+    </style>
+</head>
+<body>
+    <h1>{title}</h1>
+    <div id="content">{content}</div>
+</body>
+</html>
+"""
+
+# Config file path - Changed to local directory
+CONFIG_FILE = 'helloreader_config.json'
+
+# Default URL for testing
+DEFAULT_TEST_URL = "https://www.piaotia.com/html/0/757/11485522.html"
+
+class HelloReader(toga.App):
+    def __init__(self, formal_name, app_id):
+        super().__init__(formal_name, app_id)
+        self.scraper = WebScraper() # Instantiate the scraper
+        self.current_url = None
+        self.next_page_url = None
+        self.previous_page_url = None
+        self.last_scraped_data = None # Store last successful scrape
+        self.current_theme = self.load_theme_preference() # Load theme preference
+
+    def load_theme_preference(self):
+        """Loads theme preference from config file."""
+        try:
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+                    theme = config.get('theme', 'dark')
+                    logging.info(f"Loaded theme preference: {theme}")
+                    return theme
+        except Exception as e:
+            logging.warning(f"Could not load config file {CONFIG_FILE}: {e}")
+        return 'dark' # Default theme
+
+    def save_theme_preference(self):
+        """Saves current theme preference to config file."""
+        try:
+            config = {'theme': self.current_theme}
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(config, f)
+            logging.info(f"Saved theme preference: {self.current_theme}")
+        except Exception as e:
+            logging.warning(f"Could not save config file {CONFIG_FILE}: {e}")
+
+    def startup(self):
+        print("--- HelloReader startup initiated ---")
+        # --- UI Elements --- 
+        main_box = toga.Box(style=Pack(direction=COLUMN))
+
+        # --- URL Input and Load Button Box (Combined) ---
+        start_label = toga.Label("Paste Starting URL:", style=Pack(margin_left=5, margin_right=5))
+        self.URL_input = toga.TextInput(style=Pack(flex=1)) # Input takes available space
+        load_button = toga.Button(
+            "Load URL", 
+            on_press=self.handle_load_button, 
+            style=Pack(margin_left=5, margin_right=5)
+        )
+        # url_box contains label, input, and button
+        url_box = toga.Box(style=Pack(direction=ROW, margin=5, align_items='center')) 
+        url_box.add(start_label)
+        url_box.add(self.URL_input)
+        url_box.add(load_button) # Add button to the same box
+
+        # WebView for content display
+        self.webview = toga.WebView(style=Pack(flex=1))
+
+        # --- Navigation Buttons --- 
+        self.previous_button = toga.Button("Previous Page", on_press=self.load_previous_page, enabled=False, style=Pack(margin=5))
+        self.next_button = toga.Button("Next Page", on_press=self.load_next_page, enabled=False, style=Pack(margin=5))
+        self.theme_button = toga.Button("Theme", on_press=self.toggle_theme, style=Pack(margin=5))
+        
+        spacer1 = toga.Box(style=Pack(flex=1))
+        spacer2 = toga.Box(style=Pack(flex=1))
+        button_box = toga.Box(style=Pack(direction=ROW, margin=5))
+        button_box.add(self.previous_button)
+        button_box.add(spacer1)
+        button_box.add(self.theme_button) # Add theme button in the middle
+        button_box.add(spacer2)
+        button_box.add(self.next_button)
+
+        # --- Assemble the main layout --- 
+        main_box.add(url_box) # Add the combined url_box
+        main_box.add(self.webview) # Add WebView here
+        main_box.add(button_box)
+
+        self.main_window = toga.MainWindow(title=self.formal_name)
+        self.main_window.content = main_box
+
+        # --- Remove Menu Commands for Theme Toggle --- 
+        # theme_toggle_cmd = toga.Command(...)
+        # self.commands.add(theme_toggle_cmd)
+        # self.main_window.toolbar.add(theme_toggle_cmd) 
+
+        print("--- Content set, attempting to show window ---")
+        self.main_window.show()
+        print("--- main_window.show() called ---")
+
+    def format_html_content(self, data, theme='dark'):
+        """Formats the fetched data into an HTML string with theme."""
+        # Basic theming
+        bg_color = "#121212" if theme == 'dark' else "#FFFFFF"
+        text_color = "#FFFFFF" if theme == 'dark' else "#000000"
+
+        # Prioritize HTML content if available
+        final_content = data.get('content_html')
+        is_html = True
+
+        if final_content is None:
+            # Fallback to text content if HTML wasn't extracted
+            is_html = False
+            plain_text = data.get('content_text', '')
+            # --- New Fallback Logic: Add breaks based on observed pattern ---
+            # Replace the sequence of non-breaking spaces with HTML breaks
+            processed_text = plain_text.replace('\xa0\xa0\xa0\xa0', '<br><br>')
+            # Maybe also replace single non-breaking spaces with regular spaces?
+            processed_text = processed_text.replace('\xa0', ' ')
+            final_content = processed_text
+
+            logging.debug("Using processed text content with added <br> tags.")
+        else:
+             logging.debug("Using pre-formatted HTML content.")
+
+        # Escape title separately
+        title_text = html.escape(data.get('title', 'No Title'))
+        
+        # Use the HTML template
+        return HTML_TEMPLATE.format(
+            title=title_text,
+            content=final_content, # Insert raw HTML or formatted text
+            background_color=bg_color,
+            text_color=text_color
+        )
+
+    def update_ui_with_content(self, data):
+        """Updates the WebView and navigation buttons."""
+        self.last_scraped_data = data # Store data for theme toggle
+        self.next_page_url = data.get("next_page_url")
+        self.previous_page_url = data.get("previous_page_url")
+        self.main_window.title = data.get("title", self.formal_name) # Update window title
+        
+        # Format and set content using the current theme
+        html_content = self.format_html_content(data, theme=self.current_theme)
+        self.webview.set_content(self.current_url, html_content) 
+
+        # Update button states
+        self.next_button.enabled = bool(self.next_page_url)
+        self.previous_button.enabled = bool(self.previous_page_url)
+
+    def load_url_and_update_ui(self, url):
+        """Handles the process of fetching and displaying content for a URL."""
+        if not url:
+            self.main_window.dialog(toga.InfoDialog("Input Required", "URL is empty."))
+            return
+
+        self.current_url = url
+        self.main_window.title = f"Loading: {url}..." # Indicate loading
+        self.next_button.enabled = False
+        self.previous_button.enabled = False
+
+        try:
+            scraped_data = self.scraper.fetch_chapter(url)
+            if scraped_data:
+                scraped_data['_base_url'] = url 
+                self.update_ui_with_content(scraped_data)
+            else:
+                self.main_window.dialog(toga.ErrorDialog("Error", "Failed to retrieve content (no data)."))
+                self.main_window.title = self.formal_name # Reset title
+
+        except ScraperException as e:
+            self.main_window.dialog(toga.ErrorDialog("Scraping Error", str(e)))
+            self.main_window.title = self.formal_name # Reset title
+        except Exception as e:
+            self.main_window.dialog(toga.ErrorDialog("Unexpected Error", f"An unexpected error occurred: {str(e)}"))
+            self.main_window.title = self.formal_name # Reset title
+
+    def toggle_theme(self, widget=None):
+        """Toggles the theme and updates the display."""
+        self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
+        logging.info(f"Toggling theme to: {self.current_theme}")
+        
+        # Re-render content with the new theme if content exists
+        if self.last_scraped_data and self.current_url:
+            html_content = self.format_html_content(self.last_scraped_data, theme=self.current_theme)
+            # Use the stored URL as the base for set_content
+            base_url_for_webview = self.last_scraped_data.get('_base_url', self.current_url)
+            self.webview.set_content(base_url_for_webview, html_content)
+            logging.debug("WebView content updated with new theme.")
+        else:
+            logging.debug("No content loaded, theme toggle only changes preference.")
+        
+        # Save the new preference
+        self.save_theme_preference()
+
+    def handle_load_button(self, widget):
+        """Called when the Load URL button is pressed."""
+        url_to_load = self.URL_input.value.strip()
+        # Use default URL if input is empty
+        if not url_to_load:
+            url_to_load = DEFAULT_TEST_URL
+            self.URL_input.value = url_to_load # Update input field to show the default
+            logging.info(f"Input empty, using default test URL: {url_to_load}")
+            
+        self.load_url_and_update_ui(url_to_load)
+
+    def load_next_page(self, widget):
+        """Loads the next page content."""
+        if self.next_page_url:
+            self.URL_input.value = self.next_page_url # Update input field
+            self.load_url_and_update_ui(self.next_page_url)
+        else:
+            self.main_window.dialog(toga.InfoDialog("Info", "No next page URL found."))
+
+    def load_previous_page(self, widget):
+        """Loads the previous page content."""
+        if self.previous_page_url:
+            self.URL_input.value = self.previous_page_url # Update input field
+            self.load_url_and_update_ui(self.previous_page_url)
+        else:
+            self.main_window.dialog(toga.InfoDialog("Info", "No previous page URL found."))
+
+def main():
+    print("--- main() called ---")
+    # Provide formal_name and app_id explicitly
+    app = HelloReader(
+        formal_name="Hello Reader", 
+        app_id="com.example.helloreader" # Use reverse domain notation
+    )
+    print("--- HelloReader instance created, returning app ---")
+    return app
+
+# Add the standard main execution block
+if __name__ == '__main__':
+    print("--- Script executed directly (__name__ == '__main__') ---")
+    hello_reader_app = main()
+    print("--- Starting Toga main loop ---")
+    hello_reader_app.main_loop() # Start the application event loop
+    print("--- Toga main loop exited ---") # This will print when the app closes
