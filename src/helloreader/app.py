@@ -21,7 +21,7 @@ HTML_TEMPLATE = """
             font-family: 'Songti SC', 'PingFang SC', sans-serif;
             background-color: {background_color}; /* Single braces for placeholder */
             color: {text_color}; /* Single braces for placeholder */
-            font-size: {font_size:.1f}em; 
+            font-size: 2.0em; 
             line-height: 1.6;
             margin: 20px;
         }} /* Double braces for literal CSS brace */
@@ -103,7 +103,6 @@ class HelloReader(toga.App):
         self.last_scraped_data = None # Store last successful scrape
         self.current_theme = 'dark' # Default theme
         self.bookmarked_url = None # Store loaded bookmark
-        self.current_font_size = 2.0 # Set default before load_config
         # self.load_config() # Load theme and bookmark
 
     @property
@@ -121,8 +120,6 @@ class HelloReader(toga.App):
                     config = json.load(f)
                     self.current_theme = config.get('theme', 'dark')
                     self.bookmarked_url = config.get('last_url', None)
-                    # Load font size, defaulting to the initial value
-                    self.current_font_size = float(config.get('font_size', self.current_font_size))
                     logging.info(f"Loaded config from {config_path}: theme={self.current_theme}, last_url={self.bookmarked_url}")
             else:
                 logging.info(f"Config file not found at {config_path}. Using defaults.")
@@ -140,8 +137,7 @@ class HelloReader(toga.App):
             url_to_save = self.current_url if self.current_url else self.bookmarked_url
             config = {
                 'theme': self.current_theme,
-                'last_url': url_to_save,
-                'font_size': self.current_font_size
+                'last_url': url_to_save
             }
             # Ensure config is only saved if url_to_save is not None
             if url_to_save:
@@ -157,7 +153,6 @@ class HelloReader(toga.App):
 
     def startup(self):
         # Load config first to get the bookmarked URL
-        # This also loads font size preference
         self.load_config()
 
         print("--- HelloReader startup initiated ---")
@@ -198,14 +193,7 @@ class HelloReader(toga.App):
             on_press=self.toggle_url_input_visibility,
             style=Pack(width=40, color="#FFFFFF") # Set text color for contrast
         )
-        # Font size button
-        self.show_font_size_button = toga.Button(
-           "Size",
-           on_press=self.toggle_font_size_visibility,
-           style=Pack(width=40) # Fixed width
-        )
         nav_button_box.add(self.show_url_input_button)
-        nav_button_box.add(self.show_font_size_button) # Add size button
         nav_button_box.add(spacer2)
         nav_button_box.add(self.next_button)
 
@@ -217,39 +205,17 @@ class HelloReader(toga.App):
         self.url_input_box.add(self.url_input)
         self.url_input_box.add(self.confirm_load_button)
 
-        # --- Font Size Slider Box (initially hidden) ---
-        self.current_font_size = 2.0 # Default size, might be overwritten by load_config
-
-        self.font_size_slider = toga.Slider(
-            range=(1.0, 4.0), # e.g., 1em to 4em
-            # Value will be set after load_config
-            on_change=self.handle_font_size_change,
-            style=Pack(flex=1)
-        )
-        # Optional: Label to show current size
-        self.font_size_label = toga.Label(f"{self.current_font_size:.1f}em", style=Pack(width=50, padding_left=5))
-
-        self.font_size_box = toga.Box(style=Pack(direction=ROW, padding=5)) # Don't set display here
-        self.font_size_box.add(self.font_size_slider)
-        self.font_size_box.add(self.font_size_label)
-
         # Store nav_button_box for theming
         self.nav_button_box = nav_button_box
 
         # --- Assemble the main layout ---
         self.main_box.add(self.webview) # Add WebView here
-        # Don't add url_input_box here initially
-        # Don't add font_size_box here initially
         self.main_box.add(self.nav_button_box) # Add the navigation button container
 
         self.main_window = toga.MainWindow(title=self.formal_name)
         self.main_window.content = self.main_box
 
-        # Update slider value *after* loading config
-        self.font_size_slider.value = self.current_font_size
-        self.font_size_label.text = f"{self.current_font_size:.1f}em"
-
-        # Apply initial theme to visible containers
+        # Apply initial theme to containers *and* window
         self._apply_theme_to_containers()
 
         # --- Auto-load bookmarked URL or default test URL if available ---
@@ -283,7 +249,7 @@ class HelloReader(toga.App):
         else:
             print("--- No initial URL to load in on_running ---")
 
-    def format_html_content(self, data, theme='dark', font_size=2.0):
+    def format_html_content(self, data, theme='dark'):
         """Formats the fetched data into an HTML string with theme."""
         # Basic theming
         bg_color = "#121212" if theme == 'dark' else "#FFFFFF"
@@ -316,8 +282,7 @@ class HelloReader(toga.App):
             title=title_text,
             content=final_content, # Insert raw HTML or formatted text
             background_color=bg_color,
-            text_color=text_color,
-            font_size=font_size
+            text_color=text_color
         )
 
     def update_ui_with_content(self, data):
@@ -336,8 +301,9 @@ class HelloReader(toga.App):
 
         self.main_window.title = data.get("title", self.formal_name) # Update window title
         
-        # Update webview via the style helper
-        self._update_webview_style()
+        # Format and set content using the current theme
+        html_content = self.format_html_content(data, theme=self.current_theme)
+        self.webview.set_content(self.current_url, html_content) 
 
         # Update button states
         self.next_button.enabled = bool(self.next_page_url)
@@ -485,52 +451,6 @@ class HelloReader(toga.App):
             self.load_url_and_update_ui(self.previous_page_url)
         else:
             self.main_window.dialog(toga.InfoDialog("Info", "No previous page URL found."))
-
-    def toggle_font_size_visibility(self, widget):
-        """Toggles the visibility of the font size slider box."""
-        print("--- Toggling font size visibility ---")
-        # Ensure only one control box is visible at a time (optional, but good UX)
-        if self.url_input_box.parent:
-            self.main_box.remove(self.url_input_box)
-
-        if self.font_size_box.parent: # If it's visible, hide it
-            print("--- Hiding font size box ---")
-            self.main_box.remove(self.font_size_box)
-        else: # If it's hidden, show it
-            print("--- Showing font size box ---")
-            # Insert between webview (index 0) and nav_button_box (index 1 after insert)
-            self.main_box.insert(1, self.font_size_box)
-            # Always set dark background when showing
-            self.font_size_box.style.background_color = "#121212"
-            # Update slider in case config loaded a different value or it wasn't updated yet
-            self.font_size_slider.value = self.current_font_size
-            self.font_size_label.text = f"{self.current_font_size:.1f}em"
-
-    def handle_font_size_change(self, slider):
-        """Handles changes from the font size slider."""
-        new_size = slider.value
-        # Optional: Check if size actually changed to avoid redundant updates
-        if abs(new_size - self.current_font_size) > 0.05: # Check with tolerance
-            self.current_font_size = new_size
-            self.font_size_label.text = f"{self.current_font_size:.1f}em"
-            print(f"--- Font size changed to: {self.current_font_size:.1f}em ---")
-            self._update_webview_style() # Update the webview immediately
-            self.save_config() # Save the new preference
-
-    def _update_webview_style(self):
-        """Helper to re-format and update WebView content with current style."""
-        if self.last_scraped_data and self.current_url:
-            print(f"--- Updating WebView style: theme={self.current_theme}, size={self.current_font_size:.1f}em ---")
-            html_content = self.format_html_content(
-                self.last_scraped_data,
-                theme=self.current_theme,
-                font_size=self.current_font_size
-            )
-            # Use the stored URL as the base for set_content
-            base_url_for_webview = self.last_scraped_data.get('_base_url', self.current_url)
-            self.webview.set_content(base_url_for_webview, html_content)
-        else:
-            logging.debug("_update_webview_style called but no content loaded.")
 
 def main():
     print("--- main() called ---")
