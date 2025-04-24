@@ -1,0 +1,152 @@
+[tool.briefcase]
+project_name = "Hello Reader"
+bundle = "me.dliangthinks"
+version = "0.0.1"
+url = "https://www.dliangthinks.me"
+license.file = "LICENSE"
+author = "Dong Liang"
+author_email = "dliangthinks@gmail.com"
+
+[tool.briefcase.app.helloreader]
+formal_name = "Hello Reader"
+description = "Read without distraction"
+long_description = """More details about the app.
+"""
+sources = [
+    "src/helloreader",
+]
+test_sources = [
+    "tests",
+]
+
+
+icon = "resources/helloreader.png"
+
+requires = [
+    'toga', # Ensure core Toga is listed here
+    'requests', # Consider removing version pin (~=2.26.0) unless needed
+    'beautifulsoup4', # Consider removing version pin (~=4.9.3) unless needed
+]
+
+[tool.briefcase.app.helloreader.macOS]
+universal_build = true
+requires = [
+    # Only include if std-nslog is actually used for native logging
+    # "std-nslog~=1.0.0",
+]
+
+# No platform-specific Python requirements for Linux by default
+# [tool.briefcase.app.helloreader.linux]
+# requires = []
+
+[tool.briefcase.app.helloreader.linux.system.debian]
+# VERIFY these system requirements for your target Debian/Ubuntu versions
+system_requires = [
+    "libcairo2-dev",
+    "libgirepository1.0-dev",
+]
+system_runtime_requires = [
+    "gir1.2-gtk-3.0",
+    "libgirepository-1.0-1",
+    "libcanberra-gtk3-module",
+    # Verify/uncomment if WebView is needed, check package name (4.0 vs 4.1)
+    # "gir1.2-webkit2-4.1",
+]
+
+[tool.briefcase.app.helloreader.linux.system.rhel]
+# VERIFY these system requirements for your target RHEL/Fedora versions
+system_requires = [
+    "cairo-gobject-devel",
+    "gobject-introspection-devel",
+]
+system_runtime_requires = [
+    "gobject-introspection",
+    "gtk3",
+    "libcanberra-gtk3",
+    # Verify/uncomment if WebView is needed
+    # "webkit2gtk3",
+]
+
+[tool.briefcase.app.helloreader.linux.system.suse]
+# VERIFY these system requirements for your target openSUSE versions
+system_requires = [
+    "cairo-devel",
+    "gobject-introspection-devel",
+]
+system_runtime_requires = [
+    "gtk3",
+    "gobject-introspection", "typelib(Gtk) = 3.0",
+    "libcanberra-gtk3-module",
+    # Verify/uncomment if WebView is needed
+    # "libwebkit2gtk3", "typelib(WebKit2)",
+]
+
+[tool.briefcase.app.helloreader.linux.system.arch]
+# VERIFY these system requirements for Arch Linux
+system_requires = [
+    "cairo",
+    "gobject-introspection",
+    "gtk3",
+    "libcanberra",
+    # Verify/uncomment if WebView is needed
+    # "webkit2gtk",
+]
+system_runtime_requires = [
+    "gtk3",
+    "gobject-introspection-runtime",
+    "libcanberra",
+    # Verify/uncomment if WebView is needed
+    # "webkit2gtk",
+]
+
+[tool.briefcase.app.helloreader.linux.appimage]
+manylinux = "manylinux_2_28" # Verify if still the recommended default
+# VERIFY these build requirements for AppImage
+system_requires = [
+    "cairo-gobject-devel",
+    "gobject-introspection-devel",
+    "gtk3-devel",
+    "libcanberra-gtk3",
+    "PackageKit-gtk3-module",
+    "gvfs-client",
+]
+linuxdeploy_plugins = [
+    "DEPLOY_GTK_VERSION=3 gtk",
+]
+
+[tool.briefcase.app.helloreader.linux.flatpak]
+flatpak_runtime = "org.gnome.Platform"
+# VERIFY/Update Flatpak runtime version (e.g., 46 or newer might be recommended)
+flatpak_runtime_version = "45"
+flatpak_sdk = "org.gnome.Sdk"
+
+# No platform-specific Python requirements for Windows by default
+# [tool.briefcase.app.helloreader.windows]
+# requires = []
+
+[tool.briefcase.app.helloreader.iOS]
+requires = [
+    "toga-iOS",  # <-- Add this line TEMPORARILY for testing
+    "std-nslog~=1.0.0",
+]
+
+
+
+[tool.briefcase.app.helloreader.android]
+# No platform-specific Python requirements for Android by default
+# requires = []
+base_theme = "Theme.MaterialComponents.Light.DarkActionBar"
+build_gradle_dependencies = [
+    # Check for latest stable version of Material Components
+    "com.google.android.material:material:1.11.0", # Or newer version
+    # Uncomment if DetailedList with pull-to-refresh is used
+    # "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0",
+    # Uncomment if MapView is used
+    # "org.osmdroid:osmdroid-android:6.1.0",
+]
+
+[tool.briefcase.app.helloreader.web]
+# No platform-specific Python requirements for Web by default
+# requires = []
+# Check for newer Shoelace versions if desired
+style_framework = "Shoelace v2.3"

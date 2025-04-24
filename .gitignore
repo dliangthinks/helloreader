@@ -4,3 +4,10 @@ __pycache__
 *.pyd
 *.pyw
 *.pyz
+build/
+dist/
+logs/
+.venv/
+.idea/
+.vscode/
+.DS_Store
